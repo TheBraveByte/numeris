@@ -2,6 +2,8 @@ package infra
 
 import (
 	"time"
+
+	"github.com/golang-jwt/jwt/v4"
 )
 
 type Auth struct {
@@ -102,6 +104,14 @@ type EmailTemplate struct {
 	Receiver string `json:"receiver" bson:"receiver" validate:"required"`
 	Sender   string `json:"sender" bson:"sender" validate:"required"`
 	Template string `json:"template,omitempty" bson:"template,omitempty"`
+}
+
+
+// AuthAccessToken type struct which is used to create/generate JWT tokens.
+type AuthAccessToken struct {
+	UserUUID string `json:"_id"`
+	Email    string `json:"email"`
+	jwt.RegisteredClaims
 }
 
 type IPInfo struct {
