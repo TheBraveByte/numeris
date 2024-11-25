@@ -2,6 +2,8 @@ package app
 
 import (
 	"time"
+
+	"github.com/golang-jwt/jwt/v4"
 )
 
 type Auth struct {
@@ -102,6 +104,14 @@ type EmailTemplate struct {
 	Template string `json:"template,omitempty" bson:"template,omitempty"`
 }
 
+// AuthAccessToken type struct which is used to create/generate JWT tokens.
+type AuthAccessToken struct {
+	UserUUID string `json:"_id"`
+	Email    string `json:"email"`
+	jwt.RegisteredClaims
+}
+
+// IPInfo for IP tracking information and location
 type IPInfo struct {
 	IP        string `json:"ip" bson:"ip" validate:"required"`
 	City      string `json:"city" bson:"city,omitempty"`
