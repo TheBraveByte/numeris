@@ -2,8 +2,9 @@ package domain
 
 import (
 	"errors"
-	"fmt"
 	"time"
+
+	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 type Invoice struct {
@@ -35,8 +36,30 @@ type PaymentInformation struct {
 	BankName      string
 }
 
+type CustomerDetails struct {
+	Name    string
+	Phone   string
+	Email   string
+	Address string
+}
+
+type SenderDetails struct {
+	Name    string
+	Phone   string
+	Email   string
+	Address string
+}
+
 // NewInvoice creates a new Invoice object
-func NewInvoice(invoiceNumber, billingCurrency string, discount float64, dueDate time.Time, items []Item, paymentInfo PaymentInformation) (*Invoice, error) {
+func NewInvoice(
+	invoiceNumber, billingCurrency string,
+	discount float64,
+	issueDate, dueDate time.Time,
+	items []Item,
+	paymentInfo PaymentInformation,
+	customer CustomerDetails,
+	sender SenderDetails,
+) (*Invoice, error) {
 	// validate inputs
 	if invoiceNumber == "" {
 		return nil, errors.New("invoice number cannot be empty")
@@ -51,13 +74,24 @@ func NewInvoice(invoiceNumber, billingCurrency string, discount float64, dueDate
 		return nil, errors.New("invoice must have at least one item")
 	}
 
+	// validate customer details
+	if err := validateDetails(customer.Name, customer.Phone, customer.Email, customer.Address); err != nil {
+		return nil, errors.New("invalid customer details: " + err.Error())
+	}
+
+	// Validate sender details
+	if err := validateDetails(sender.Name, sender.Phone, sender.Email, sender.Address); err != nil {
+		return nil, errors.New("invalid sender details: " + err.Error())
+	}
+
 	for _, item := range items {
 		if err := validateItem(item); err != nil {
 			return nil, err
 		}
 	}
-	if time.Now().After(dueDate) {
-		return nil, errors.New("due date cannot be in the past")
+
+	if _, err := validateDates(issueDate, dueDate); err != nil {
+		return nil, err
 	}
 
 	// validate payment info
@@ -72,7 +106,7 @@ func NewInvoice(invoiceNumber, billingCurrency string, discount float64, dueDate
 	invoice := &Invoice{
 		ID:              generateID(),
 		InvoiceNumber:   invoiceNumber,
-		IssueDate:       time.Now(),
+		IssueDate:       issueDate,
 		DueDate:         dueDate,
 		BillingCurrency: billingCurrency,
 		Discount:        discount,
@@ -119,6 +153,41 @@ func (i *Invoice) UpdatePaymentInfo(paymentInfo PaymentInformation) error {
 	return nil
 }
 
+func validateDates(issueDate, dueDate time.Time) (string, error) {
+	// Extract only the date part
+	currentDate := time.Now().Truncate(24 * time.Hour)
+	issueDate = issueDate.Truncate(24 * time.Hour)
+	dueDate = dueDate.Truncate(24 * time.Hour)
+
+	if currentDate.After(issueDate) {
+		return "", errors.New("issue date cannot be in the past")
+	}
+
+	if currentDate.After(dueDate) {
+		return "", errors.New("due date cannot be in the past")
+	}
+
+	return "Dates are valid", nil
+}
+
+func validateDetails(name, phone, email, address string) error {
+	if name == "" {
+		return errors.New("name cannot be empty")
+	}
+	if phone == "" {
+		return errors.New("phone cannot be empty")
+	}
+
+	if err := validateEmail(email); err != nil {
+		return errors.New("email cannot be empty")
+	}
+
+	if address == "" {
+		return errors.New("address cannot be empty")
+	}
+	return nil
+}
+
 // validatePaymentInfo checks the validity of the payment information
 func validatePaymentInfo(paymentInfo PaymentInformation) error {
 	if paymentInfo.AccountName == "" {
@@ -161,5 +230,5 @@ func calculateTotalAmount(items []Item, discount float64) float64 {
 
 // generateID generates a unique ID for the invoice
 func generateID() string {
-	return fmt.Sprintf("INV-%d", time.Now().UnixNano())
+	return primitive.NewObjectID().Hex()
 }

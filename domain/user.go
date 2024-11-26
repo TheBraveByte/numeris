@@ -19,7 +19,7 @@ type User struct {
 	FirstName   string    `json:"first_name" bson:"first_name" validate:"required"`
 	LastName    string    `json:"last_name" bson:"last_name" validate:"required"`
 	Email       string    `json:"email" bson:"email" validate:"required,email"`
-	Password    string    `json:"password" bson:"password" validate:"required`
+	Password    string    `json:"password" bson:"password" validate:"required"`
 	PhoneNumber string    `json:"phone_number" bson:"phone_number" validate:"required"`
 	CreatedAt   time.Time `json:"created_at" bson:"created_at" validate:"required"`
 	UpdatedAt   time.Time `json:"updated_at" bson:"updated_at" validate:"required"`
