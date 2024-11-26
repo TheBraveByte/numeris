@@ -28,11 +28,11 @@ func (repo *UserRepository) AddUser(db *mongo.Client, user *domain.User, email s
 
 	filter := bson.D{{Key: "email", Value: email}}
 
-	if err := UserCol(db, "user").FindOne(ctx, filter).Decode(&existingUser); err != nil {
+	if err := UserData(db, "user").FindOne(ctx, filter).Decode(&existingUser); err != nil {
 
 		if errors.Is(err, mongo.ErrNoDocuments) {
 
-			res, err := UserCol(db, "user").InsertOne(ctx, user)
+			res, err := UserData(db, "user").InsertOne(ctx, user)
 			if err != nil {
 				panic(fmt.Errorf("error while inserting user: %v", err))
 			}
@@ -56,7 +56,7 @@ func (repo *UserRepository) VerifyLogin(db *mongo.Client, email, password string
 
 	filter := bson.D{{Key: "email", Value: email}}
 
-	err := UserCol(db, "user").FindOne(ctx, filter).Decode(&result)
+	err := UserData(db, "user").FindOne(ctx, filter).Decode(&result)
 
 	if err != nil {
 		if errors.Is(err, mongo.ErrNoDocuments) {
@@ -80,7 +80,7 @@ func (repo *UserRepository) SaveToken(db *mongo.Client, id string, accessToken s
 	update := bson.D{{Key: "$set", Value: bson.D{{Key: "token", Value: accessToken}}}}
 
 	// check to make sure that the user exists in the database
-	_, err := UserCol(db, "user").UpdateOne(ctx, filter, update)
+	_, err := UserData(db, "user").UpdateOne(ctx, filter, update)
 	if err != nil {
 		if errors.Is(err, mongo.ErrNoDocuments) {
 			slog.Error("User not found", "_id", id)
@@ -101,7 +101,7 @@ func (repo *UserRepository) UpdatePassword(db *mongo.Client, email, password str
 	update := bson.D{{Key: "$set", Value: bson.D{{Key: "password", Value: password}}}}
 
 	var result bson.M
-	err := UserCol(db, "user").FindOneAndUpdate(ctx, filter, update).Decode(&result)
+	err := UserData(db, "user").FindOneAndUpdate(ctx, filter, update).Decode(&result)
 	if err != nil {
 		if errors.Is(err, mongo.ErrNoDocuments) {
 			return fmt.Errorf("%v", "cannot reset user password! this acc does not exist")
