@@ -8,7 +8,7 @@ import (
 )
 
 type Invoice struct {
-	ID              string
+	InvoiceID       string
 	InvoiceNumber   string
 	IssueDate       time.Time
 	DueDate         time.Time
@@ -52,6 +52,7 @@ type SenderDetails struct {
 
 // NewInvoice creates a new Invoice object
 func NewInvoice(
+	userID,
 	invoiceNumber, billingCurrency string,
 	discount float64,
 	issueDate, dueDate time.Time,
@@ -104,7 +105,7 @@ func NewInvoice(
 
 	// construct  the invoice model
 	invoice := &Invoice{
-		ID:              generateID(),
+		InvoiceID:       generateID(),
 		InvoiceNumber:   invoiceNumber,
 		IssueDate:       issueDate,
 		DueDate:         dueDate,
