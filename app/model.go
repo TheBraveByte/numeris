@@ -6,10 +6,6 @@ import (
 	"github.com/golang-jwt/jwt/v4"
 )
 
-type Auth struct {
-	Token string `json:"token" bson:"token" validate:"required"`
-}
-
 // User: user details and informations
 type User struct {
 	ID             string         `json:"id" bson:"_id,omitempty" validate:"required"`
@@ -25,7 +21,8 @@ type User struct {
 
 // Invoice: invoice information for every user activities
 type Invoice struct {
-	ID              string             `json:"id" bson:"_id,omitempty" validate:"required"`
+	UserID          string             `json:"user_id" bson:"user_id,omitempty" validate:"required"`
+	InvoiceID       string             `json:"invoice_id" bson:"invoice_id,omitempty" validate:"required"`
 	InvoiceNumber   string             `json:"invoice_number" bson:"invoice_number" validate:"required"`
 	IssueDate       time.Time          `json:"issue_date" bson:"issue_date" validate:"required"`
 	DueDate         time.Time          `json:"due_date" bson:"due_date" validate:"required"`
