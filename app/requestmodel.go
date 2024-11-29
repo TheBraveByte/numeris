@@ -40,3 +40,7 @@ type InvoiceRequestModel struct {
 	IssueDate       time.Time          `json:"issue_date" validate:"required"`
 	DueDate         time.Time          `json:"due_date"`
 }
+
+type UpdateInvoiceStatusRequestModel struct {
+	Status string `json:"status" validate:"required"`
+}

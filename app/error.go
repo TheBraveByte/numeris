@@ -14,4 +14,5 @@ var (
 	ErrLoginFailed        = errors.New("login failed")
 	ErrGenerateToken      = errors.New("cannot generate jwt token")
 	ErrInvalidUpdateToken = errors.New("invalid token update")
+	ErrUnauthorized       = errors.New("unauthorized access requested")
 )
