@@ -13,7 +13,7 @@ import (
 type ActivityRepository struct {
 }
 
-func (r *ActivityRepository) Save(db *mongo.Client, activity domain.Activity) error {
+func (r *ActivityRepository) Save(db *mongo.Client, activity *domain.Activity) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
