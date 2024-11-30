@@ -9,48 +9,49 @@ import (
 )
 
 type Invoice struct {
-	InvoiceID       string
-	InvoiceNumber   string
-	IssueDate       string
-	DueDate         string
-	BillingCurrency string
-	Discount        float64
-	TotalAmountDue  float64
-	Notes           string
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
-	PaymentInfo     PaymentInformation
-	Items           []Item
-	Customer        CustomerDetails
-	Sender          SenderDetails
+	InvoiceID       string             `json:"invoice_id" bson:"invoice_id"`
+	InvoiceNumber   string             `json:"invoice_number" bson:"invoice_number"`
+	IssueDate       string             `json:"issue_date" bson:"issue_date"`
+	DueDate         string             `json:"due_date" bson:"due_date"`
+	BillingCurrency string             `json:"billing_currency" bson:"billing_currency"`
+	Discount        float64            `json:"discount" bson:"discount"`
+	TotalAmountDue  float64            `json:"total_amount_due" bson:"total_amount_due"`
+	Notes           string             `json:"notes" bson:"notes"`
+	CreatedAt       time.Time          `json:"created_at" bson:"created_at"`
+	UpdatedAt       time.Time          `json:"updated_at" bson:"updated_at"`
+	PaymentInfo     PaymentInformation `json:"payment_info" bson:"payment_info"`
+	Items           []Item             `json:"items" bson:"items"`
+	Customer        CustomerDetails    `json:"customer" bson:"customer"`
+	Sender          SenderDetails      `json:"sender" bson:"sender"`
+	Status          string             `json:"status" validate:"required"`
 }
 
 type Item struct {
-	Description string
-	Quantity    int
-	UnitPrice   float64
-	TotalPrice  float64
+	Description string  `json:"description" bson:"description"`
+	Quantity    int     `json:"quantity" bson:"quantity"`
+	UnitPrice   float64 `json:"unit_price" bson:"unit_price"`
+	TotalPrice  float64 `json:"total_price" bson:"total_price"`
 }
 
 type PaymentInformation struct {
-	AccountName   string
-	AccountNumber string
-	RoutingNumber string
-	BankName      string
+	AccountName   string `json:"account_name" bson:"account_name"`
+	AccountNumber string `json:"account_number" bson:"account_number"`
+	RoutingNumber string `json:"routing_number" bson:"routing_number"`
+	BankName      string `json:"bank_name" bson:"bank_name"`
 }
 
 type CustomerDetails struct {
-	Name    string
-	Phone   string
-	Email   string
-	Address string
+	Name    string `json:"name" bson:"name"`
+	Phone   string `json:"phone" bson:"phone"`
+	Email   string `json:"email" bson:"email"`
+	Address string `json:"address" bson:"address"`
 }
 
 type SenderDetails struct {
-	Name    string
-	Phone   string
-	Email   string
-	Address string
+	Name    string `json:"name" bson:"name"`
+	Phone   string `json:"phone" bson:"phone"`
+	Email   string `json:"email" bson:"email"`
+	Address string `json:"address" bson:"address"`
 }
 
 // NewInvoice creates a new Invoice object with the provided details.
@@ -80,6 +81,7 @@ func NewInvoice(
 	paymentInfo PaymentInformation,
 	customer CustomerDetails,
 	sender SenderDetails,
+	status string,
 ) (*Invoice, error) {
 	// validate inputs
 	if invoiceNumber == "" {
@@ -137,6 +139,9 @@ func NewInvoice(
 		UpdatedAt:       time.Now(),
 		PaymentInfo:     paymentInfo,
 		Items:           items,
+		Customer:        customer,
+		Sender:          sender,
+		Status:          status,
 	}
 
 	return invoice, nil
@@ -264,5 +269,5 @@ func calculateTotalAmount(items []Item, discount float64) float64 {
 
 // generateID generates a unique ID for the invoice
 func generateID() string {
-	return fmt.Sprintf("INV-%s", primitive.NewObjectID().Hex())
+	return primitive.NewObjectID().Hex()
 }
