@@ -74,6 +74,6 @@ func Router(srv *fiber.App, app *app.Application) {
 	router.Get("/api/invoice/:userID/download/:invoiceID", app.DownloadInvoicePDFHandler())
 
 	// activity routes
-	router.Get("/api/invoice/:userID/activities/:invoiceID", app.GetInvoiceActivitiesHandler())
+	router.Get("/api/invoice/:userID/activities", app.GetInvoiceActivitiesHandler())
 
 }

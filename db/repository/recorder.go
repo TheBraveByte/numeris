@@ -58,7 +58,7 @@ func (i *InvoiceRepository) GetInvoiceActivities(db *mongo.Client, userID string
     defer cancelCtx()
 
     filter := bson.M{
-        "user_id": userID,
+        "userid": userID,
         "action": bson.M{
             "$in": []string{
                 "create_invoice_activity",

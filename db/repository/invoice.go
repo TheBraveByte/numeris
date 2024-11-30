@@ -125,7 +125,12 @@ func (i *InvoiceRepository) UpdateInvoiceBeforeDueDate(db *mongo.Client, userID 
 			return fmt.Errorf("error fetching current invoice: %v", err)
 		}
 
-		// Check if the invoice can be updated
+		if currentInvoice.Status != "pending" {
+			session.AbortTransaction(sessCtx)
+			return fmt.Errorf("invoice cannot be updated: it is paid or drafted")
+		}
+
+		// check if the invoice can be updated
 		now := time.Now().Truncate(24 * time.Hour)
 		// Parse IssueDate
 		issueDate, err := time.Parse("2006-01-02", currentInvoice.IssueDate)
@@ -133,7 +138,7 @@ func (i *InvoiceRepository) UpdateInvoiceBeforeDueDate(db *mongo.Client, userID 
 			log.Fatalf("invalid issue date format: %v", err)
 		}
 
-		// Parse DueDate
+		// parse DueDate
 		dueDate, err := time.Parse("2006-01-02", currentInvoice.DueDate)
 		if err != nil {
 			log.Fatalf("invalid due date format: %v", err)
@@ -233,33 +238,39 @@ func (i *InvoiceRepository) FindAllInvoice(db *mongo.Client, userID string) ([]*
 func (i *InvoiceRepository) InvoiceStatSummary(db *mongo.Client, userID string) (*domain.InvoiceSummary, error) {
 	ctx, cancelCtx := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancelCtx()
+
 	pipeline := mongo.Pipeline{
 		bson.D{{Key: "$match", Value: bson.M{"_id": userID}}},
 		bson.D{{Key: "$unwind", Value: "$invoices"}},
-		bson.D{{Key: "$match", Value: bson.M{"invoices.status": "paid"}}},
 		bson.D{
 			{Key: "$group", Value: bson.M{
 				"_id": nil,
 				"totalPaid": bson.M{
-					"$sum": "$invoices.total_amount",
+					"$sum": bson.M{
+						"$cond": bson.A{
+							bson.M{"$eq": bson.A{"$invoices.status", "paid"}},
+							"$invoices.total_amount_due",
+							0,
+						},
+					},
 				},
 				"totalOverdue": bson.M{
 					"$sum": bson.M{
 						"$cond": bson.A{
 							bson.M{"$and": bson.A{
 								bson.M{"$eq": bson.A{"$invoices.status", "overdue"}},
-								bson.M{"$lt": bson.A{"$invoices.dueDate", time.Now()}},
+								bson.M{"$lt": bson.A{"$invoices.due_date", time.Now()}},
 							}},
-							"$invoices.totalAmount",
+							"$invoices.total_amount_due",
 							0,
 						},
 					},
 				},
-				"totalDraft": bson.M{
+				"totalPending": bson.M{
 					"$sum": bson.M{
 						"$cond": bson.A{
-							bson.M{"$eq": bson.A{"$invoices.status", "draft"}},
-							"$invoices.totalAmount",
+							bson.M{"$eq": bson.A{"$invoices.status", "pending"}},
+							"$invoices.total_amount_due",
 							0,
 						},
 					},
@@ -274,16 +285,16 @@ func (i *InvoiceRepository) InvoiceStatSummary(db *mongo.Client, userID string) 
 	}
 	defer cursor.Close(ctx)
 
-	var results domain.InvoiceSummary
+	var results []domain.InvoiceSummary
 	if err = cursor.All(ctx, &results); err != nil {
 		return nil, fmt.Errorf("error decoding invoice stats: %v", err)
 	}
 
-	if &results == nil {
+	if len(results) == 0 {
 		return nil, fmt.Errorf("no invoice stats found for user %s", userID)
 	}
 
-	return &results, nil
+	return &results[0], nil
 }
 
 // InvoiceItemSummary retrieves a summary of items in a specific invoice for a given user.
@@ -404,7 +415,7 @@ func (i *InvoiceRepository) UpdateInvoiceStatusToIssued(db *mongo.Client, userID
 
 		update := bson.M{
 			"$set": bson.M{
-				"invoices.$.status":    "issued",
+				"invoices.$.status":     "issued",
 				"invoices.$.issue_date": time.Now(),
 			},
 		}
@@ -442,16 +453,6 @@ func (i *InvoiceRepository) UpdateInvoiceStatusToIssued(db *mongo.Client, userID
 	return nil
 }
 
-// DeleteInvoice removes an invoice from both the user's document and the invoices collection.
-// It uses a MongoDB transaction to ensure data consistency across collections.
-//
-// Parameters:
-//   - db: A pointer to the MongoDB client used for database operations.
-//   - userID: The unique identifier of the user whose invoice is being deleted.
-//   - invoiceID: The unique identifier of the invoice to be deleted.
-//
-// Returns:
-//   - An error if any step of the deletion process fails, or nil if the operation is successful.
 func (i *InvoiceRepository) DeleteInvoice(db *mongo.Client, userID, invoiceID string) error {
 	ctx, cancelCtx := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancelCtx()
@@ -466,30 +467,35 @@ func (i *InvoiceRepository) DeleteInvoice(db *mongo.Client, userID, invoiceID st
 		if err := session.StartTransaction(); err != nil {
 			return fmt.Errorf("failed to start transaction: %v", err)
 		}
-		// user collection
+
+		// Remove the invoice from the user's document
 		filter := bson.M{
-			"_id":                 userID,
-			"invoices.invoice_id": invoiceID,
+			"_id": userID,
+		}
+		update := bson.M{
+			"$pull": bson.M{
+				"invoices": bson.M{"invoice_id": invoiceID},
+			},
 		}
 
-		_, err := UserData(db, "user").DeleteOne(ctx, filter)
+		_, err := UserData(db, "user").UpdateOne(sessCtx, filter, update)
 		if err != nil {
-			session.AbortTransaction(ctx)
-			return fmt.Errorf("error updating invoice status: %v", err)
+			session.AbortTransaction(sessCtx)
+			return fmt.Errorf("error deleting invoice from user document: %v", err)
 		}
 
-		// delete the external invoice collection
+		// Delete the invoice from the external invoice collection
 		filter = bson.M{
 			"invoice_id": invoiceID,
 		}
 
-		_, err = InvoiceData(db, "invoices").DeleteOne(ctx, filter)
+		_, err = InvoiceData(db, "invoices").DeleteOne(sessCtx, filter)
 		if err != nil {
-			session.AbortTransaction(ctx)
-			return fmt.Errorf("error updating invoices status: %v", err)
+			session.AbortTransaction(sessCtx)
+			return fmt.Errorf("error deleting invoice from invoices collection: %v", err)
 		}
 
-		if err := session.CommitTransaction(ctx); err != nil {
+		if err := session.CommitTransaction(sessCtx); err != nil {
 			return fmt.Errorf("failed to commit transaction: %v", err)
 		}
 

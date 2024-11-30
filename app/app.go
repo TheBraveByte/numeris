@@ -568,6 +568,7 @@ func (app *Application) UpdateUnIssuedInvoiceHandler() fiber.Handler {
 			domain.PaymentInformation(updatedInvoice.PaymentInfo),
 			domain.CustomerDetails(updatedInvoice.Customer),
 			domain.SenderDetails(updatedInvoice.Sender),
+			updatedInvoice.Status,
 		)
 		if err != nil {
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -867,7 +868,7 @@ func (app *Application) DownloadInvoicePDFHandler() fiber.Handler {
 		}
 
 		// Create temporary directory for PDF if it doesn't exist
-		tempDir := "temp/invoices"
+		tempDir := "./temp/invoices"
 		if err := os.MkdirAll(tempDir, 0755); err != nil {
 			slog.Error("Failed to create temp directory", "error", err)
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
