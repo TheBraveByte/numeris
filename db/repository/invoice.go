@@ -126,7 +126,7 @@ func (i *InvoiceRepository) UpdateInvoiceBeforeDueDate(db *mongo.Client, userID 
 		}
 
 		// Check if the invoice can be updated
-		now := time.Now()
+		now := time.Now().Truncate(24 * time.Hour)
 		// Parse IssueDate
 		issueDate, err := time.Parse("2006-01-02", currentInvoice.IssueDate)
 		if err != nil {
