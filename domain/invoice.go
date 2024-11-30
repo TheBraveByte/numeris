@@ -2,6 +2,7 @@ package domain
 
 import (
 	"errors"
+	"fmt"
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -10,8 +11,8 @@ import (
 type Invoice struct {
 	InvoiceID       string
 	InvoiceNumber   string
-	IssueDate       time.Time
-	DueDate         time.Time
+	IssueDate       string
+	DueDate         string
 	BillingCurrency string
 	Discount        float64
 	TotalAmountDue  float64
@@ -20,6 +21,8 @@ type Invoice struct {
 	UpdatedAt       time.Time
 	PaymentInfo     PaymentInformation
 	Items           []Item
+	Customer        CustomerDetails
+	Sender          SenderDetails
 }
 
 type Item struct {
@@ -50,12 +53,29 @@ type SenderDetails struct {
 	Address string
 }
 
-// NewInvoice creates a new Invoice object
+// NewInvoice creates a new Invoice object with the provided details.
+// It validates the input parameters and returns an error if any validation fails.
+//
+// Parameters:
+//   - userID: A string representing the user ID associated with the invoice.
+//   - invoiceNumber: A string representing the unique invoice number.
+//   - billingCurrency: A string representing the currency used for billing.
+//   - discount: A float64 representing the discount percentage to be applied to the total amount.
+//   - issueDate: A time.Time representing the date the invoice was issued.
+//   - dueDate: A time.Time representing the date the invoice is due.
+//   - items: A slice of Item structs representing the items included in the invoice.
+//   - paymentInfo: A PaymentInformation struct containing the payment details for the invoice.
+//   - customer: A CustomerDetails struct containing the customer's information.
+//   - sender: A SenderDetails struct containing the sender's information.
+//
+// Returns:
+//   - A pointer to an Invoice struct if the creation is successful.
+//   - An error if any validation fails or if required fields are missing.
 func NewInvoice(
 	userID,
 	invoiceNumber, billingCurrency string,
 	discount float64,
-	issueDate, dueDate time.Time,
+	issueDate, dueDate string,
 	items []Item,
 	paymentInfo PaymentInformation,
 	customer CustomerDetails,
@@ -154,14 +174,27 @@ func (i *Invoice) UpdatePaymentInfo(paymentInfo PaymentInformation) error {
 	return nil
 }
 
-func validateDates(issueDate, dueDate time.Time) (string, error) {
-	// Extract only the date part
+func validateDates(issueDateStr, dueDateStr string) (string, error) {
+	const dateFormat = "2006-01-02"
+
+	issueDate, err := time.Parse(dateFormat, issueDateStr)
+	if err != nil {
+		return "", fmt.Errorf("invalid issue date format: %v", err)
+	}
+
+	dueDate, err := time.Parse(dateFormat, dueDateStr)
+	if err != nil {
+		return "", fmt.Errorf("invalid due date format: %v", err)
+	}
+
 	currentDate := time.Now().Truncate(24 * time.Hour)
-	issueDate = issueDate.Truncate(24 * time.Hour)
-	dueDate = dueDate.Truncate(24 * time.Hour)
 
 	if currentDate.After(issueDate) {
 		return "", errors.New("issue date cannot be in the past")
+	}
+
+	if issueDate.After(dueDate) {
+		return "", errors.New("issue date cannot be after due date")
 	}
 
 	if currentDate.After(dueDate) {
@@ -231,5 +264,5 @@ func calculateTotalAmount(items []Item, discount float64) float64 {
 
 // generateID generates a unique ID for the invoice
 func generateID() string {
-	return primitive.NewObjectID().Hex()
+	return fmt.Sprintf("INV-%s", primitive.NewObjectID().Hex())
 }

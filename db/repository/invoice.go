@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"fmt"
+	"log"
 	"log/slog"
 	"time"
 
@@ -126,7 +127,19 @@ func (i *InvoiceRepository) UpdateInvoiceBeforeDueDate(db *mongo.Client, userID 
 
 		// Check if the invoice can be updated
 		now := time.Now()
-		if currentInvoice.IssueDate.Before(now) || now.After(currentInvoice.DueDate) {
+		// Parse IssueDate
+		issueDate, err := time.Parse("2006-01-02", currentInvoice.IssueDate)
+		if err != nil {
+			log.Fatalf("invalid issue date format: %v", err)
+		}
+
+		// Parse DueDate
+		dueDate, err := time.Parse("2006-01-02", currentInvoice.DueDate)
+		if err != nil {
+			log.Fatalf("invalid due date format: %v", err)
+		}
+
+		if issueDate.Before(now) || now.After(dueDate) {
 			session.AbortTransaction(sessCtx)
 			return fmt.Errorf("invoice cannot be updated: it has been issued or the due date has passed")
 		}
@@ -273,38 +286,6 @@ func (i *InvoiceRepository) InvoiceStatSummary(db *mongo.Client, userID string) 
 	return &results, nil
 }
 
-// Todo [Yusuf] returns back to this
-// InvoiceActivities retrieves the recent invoice activities for a given user.
-// func (i *InvoiceRepository) InvoiceActivities(db *mongo.Client, userID string, limit int64) ([]domain.Activity, error) {
-// 	ctx, cancelCtx := context.WithTimeout(context.Background(), 10*time.Second)
-// 	defer cancelCtx()
-
-// 	filter := bson.M{"_id": userID}
-// 	projection := bson.M{"invoices": bson.M{"$slice": -limit}}
-
-// 	var result struct {
-// 		Invoices []domain.Invoice `bson:"invoices"`
-// 	}
-
-// 	err := UserData(db, "user").FindOne(ctx, filter, options.FindOne().SetProjection(projection)).Decode(&result)
-// 	if err != nil {
-// 		return nil, fmt.Errorf("error finding invoice activities: %v", err)
-// 	}
-
-// 	activities := make([]domain.Activity, len(result.Invoices))
-// 	for i, invoice := range result.Invoices {
-// 		activities[i] = domain.Activity{
-// 			userID:   userID,
-// 			Action: invoice.A
-// 			Date:        invoice.CreatedAt,
-// 			TotalAmount: invoice.TotalAmount,
-// 			Status:      invoice.Status,
-// 		}
-// 	}
-
-// 	return activities, nil
-// }
-
 // InvoiceItemSummary retrieves a summary of items in a specific invoice for a given user.
 //
 // Parameters:
@@ -424,7 +405,7 @@ func (i *InvoiceRepository) UpdateInvoiceStatusToIssued(db *mongo.Client, userID
 		update := bson.M{
 			"$set": bson.M{
 				"invoices.$.status":    "issued",
-				"invoices.$.issueDate": time.Now(),
+				"invoices.$.issue_date": time.Now(),
 			},
 		}
 
@@ -461,8 +442,17 @@ func (i *InvoiceRepository) UpdateInvoiceStatusToIssued(db *mongo.Client, userID
 	return nil
 }
 
+// DeleteInvoice removes an invoice from both the user's document and the invoices collection.
+// It uses a MongoDB transaction to ensure data consistency across collections.
+//
+// Parameters:
+//   - db: A pointer to the MongoDB client used for database operations.
+//   - userID: The unique identifier of the user whose invoice is being deleted.
+//   - invoiceID: The unique identifier of the invoice to be deleted.
+//
+// Returns:
+//   - An error if any step of the deletion process fails, or nil if the operation is successful.
 func (i *InvoiceRepository) DeleteInvoice(db *mongo.Client, userID, invoiceID string) error {
-
 	ctx, cancelCtx := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancelCtx()
 

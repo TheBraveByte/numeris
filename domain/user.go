@@ -47,6 +47,8 @@ func NewUser(
 		Email:       strings.ToLower(email),
 		Password:    password,
 		PhoneNumber: phoneNumber,
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
 	}, nil
 }
 
