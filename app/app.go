@@ -3,6 +3,9 @@ package app
 import (
 	"fmt"
 	"log/slog"
+	"os"
+	"path/filepath"
+	"strconv"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -67,6 +70,7 @@ func NewApplication(
 func (app *Application) SignUpHandler() fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		data := new(SignUpRequestModel)
+		print(data)
 
 		// bind the request body to the data struct
 		if err := c.BodyParser(data); err != nil {
@@ -110,22 +114,40 @@ func (app *Application) SignUpHandler() fiber.Handler {
 		}
 
 		// attempt to add the user to the database
-		id, existingUser := app.userRepository.AddUser(app.db, user, user.Email)
-		if existingUser != nil {
+		user, err = app.userRepository.AddUser(app.db, user, user.Email)
+		if err != nil {
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 				"error":   "cannot add existing user",
 				"message": fmt.Sprintf("%s: %q", ErrUserAlreadyExists.Error(), "go back to login"),
 			})
 		}
 
+		go func() {
+			activity := &domain.Activity{
+				UserID:    user.ID,
+				Action:    infra.UserCreatedAccountActivity,
+				Timestamp: time.Now(),
+				Metadata: map[string]interface{}{
+					"email": user.Email,
+				},
+			}
+			if err := app.activityRepository.Save(app.db, activity); err != nil {
+				slog.Error("Failed to record user activity", "error", err)
+			}
+		}()
+
 		// If the user is created successfully
 		return c.Status(fiber.StatusCreated).JSON(fiber.Map{
-			"message": fmt.Sprintf("User: %s has been created successfully", id),
+			"message": fmt.Sprintf("User: %s has been created successfully", user.ID),
 		})
 	}
 }
 
-// LoginHandler validates the user input and manages login, including generating a token and setting it as a cookie.
+// LoginHandler manages the user login process, including validation of input,
+// verification of credentials, and generation of a JWT token.
+//
+// Returns:
+//   - fiber.Handler: A function that processes the login request and returns an error if any occurs during the process.
 func (app *Application) LoginHandler() fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		data := new(LoginRequestModel)
@@ -184,6 +206,20 @@ func (app *Application) LoginHandler() fiber.Handler {
 			})
 		}
 
+		go func() {
+			activity := &domain.Activity{
+				UserID:    user.ID,
+				Action:    infra.UserLoginActivity,
+				Timestamp: time.Now(),
+				Metadata: map[string]interface{}{
+					"email": user.Email,
+				},
+			}
+			if err := app.activityRepository.Save(app.db, activity); err != nil {
+				slog.Error("Failed to record user activity", "error", err)
+			}
+		}()
+
 		// set response headers and cookies
 		c.Set("Authorization", "Bearer "+token)
 		c.Cookie(&fiber.Cookie{
@@ -200,6 +236,7 @@ func (app *Application) LoginHandler() fiber.Handler {
 		return c.Status(fiber.StatusOK).JSON(fiber.Map{
 			"message": "Login successful",
 			"data":    user.ID,
+			"token":   token,
 		})
 	}
 }
@@ -286,6 +323,7 @@ func (app *Application) CreateInvoiceHandler() fiber.Handler {
 				Phone:   data.Sender.Phone,
 				Address: data.Sender.Address,
 			},
+
 		)
 
 		if err != nil {
@@ -693,7 +731,7 @@ func (app *Application) SendIssuedInvoiceToCustomer() fiber.Handler {
 
 }
 
-func (app *Application) DeleteInvoice() fiber.Handler {
+func (app *Application) DeleteInvoiceHandler() fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		if err := app.contextWithAuth(c, true); err != nil {
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
@@ -766,10 +804,200 @@ func (app *Application) DeleteInvoice() fiber.Handler {
 	}
 }
 
-
-
-func (app *Application) DownloadInvoiceDocument() fiber.Handler {
+func (app *Application) DownloadInvoicePDFHandler() fiber.Handler {
 	return func(c *fiber.Ctx) error {
+		// Check authentication
+		if err := app.contextWithAuth(c, true); err != nil {
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+				"error":   ErrUnauthorized.Error(),
+				"message": "You are not authorized to perform this action",
+			})
+		}
 
+		// Get parameters from request
+		params := c.AllParams()
+		if params == nil {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error":   "Invalid request parameters",
+				"message": "userID and invoiceID must be provided",
+			})
+		}
+		userID := params["userID"]
+		invoiceID := params["invoiceID"]
+
+		// Validate user ID and invoice ID
+		if userID == "" || invoiceID == "" {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error":   "Invalid request parameters",
+				"message": "userID and invoiceID must be provided",
+			})
+		}
+
+		if _, err := primitive.ObjectIDFromHex(userID); err != nil {
+			slog.Error("Invalid userID", "error", err)
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error":   "Invalid userID",
+				"message": "userID must be a valid ObjectID",
+			})
+		}
+
+		if _, err := primitive.ObjectIDFromHex(invoiceID); err != nil {
+			slog.Error("Invalid invoiceID", "error", err)
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error":   "Invalid invoiceID",
+				"message": "invoiceID must be a valid ObjectID",
+			})
+		}
+
+		// Get the invoice data
+		invoice, err := app.invoiceRepository.FindUserInvoiceByID(app.db, userID, invoiceID)
+		if err != nil {
+			if err == mongo.ErrNoDocuments {
+				return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+					"error":   "Invoice not found",
+					"message": "The specified invoice does not exist for the given user",
+				})
+			}
+			slog.Error("Failed to retrieve invoice", "error", err)
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error":   "Failed to retrieve invoice",
+				"message": err.Error(),
+			})
+		}
+
+		// Create temporary directory for PDF if it doesn't exist
+		tempDir := "temp/invoices"
+		if err := os.MkdirAll(tempDir, 0755); err != nil {
+			slog.Error("Failed to create temp directory", "error", err)
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error":   "Failed to generate invoice document",
+				"message": err.Error(),
+			})
+		}
+
+		// Generate PDF filename
+		pdfFilename := fmt.Sprintf("invoice_%s_%s.pdf", userID, invoiceID)
+		pdfPath := filepath.Join(tempDir, pdfFilename)
+
+		// Generate the PDF
+		if err := GenerateInvoicePDF(invoice, pdfPath); err != nil {
+			slog.Error("Failed to generate PDF", "error", err)
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error":   "Failed to generate invoice document",
+				"message": err.Error(),
+			})
+		}
+
+		// set response headers for file download
+		c.Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, pdfFilename))
+		c.Set("Content-Type", "application/pdf")
+
+		if err := c.SendFile(pdfPath); err != nil {
+			slog.Error("Failed to send PDF file", "error", err)
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error":   "Failed to send invoice document",
+				"message": err.Error(),
+			})
+		}
+
+		go func() {
+			time.Sleep(5 * time.Minute)
+			if err := os.Remove(pdfPath); err != nil {
+				slog.Error("Failed to cleanup temporary PDF file", "error", err)
+			}
+		}()
+
+		go func() {
+			activity := &domain.Activity{
+				UserID:    userID,
+				Action:    infra.DownloadInvoiceActivity,
+				Timestamp: time.Now(),
+				Metadata: map[string]interface{}{
+					"invoice":   invoice,
+					"file_path": pdfPath,
+				},
+			}
+			if err := app.activityRepository.Save(app.db, activity); err != nil {
+				slog.Error("Failed to record user activity", "error", err)
+			}
+		}()
+
+		return c.Status(fiber.StatusOK).JSON(fiber.Map{
+			"message": "Invoice downloaded successfully",
+		})
+
+	}
+}
+
+// GetInvoiceActivitiesHandler returns a handler function that retrieves invoice activities for a specific user.
+// It checks for authentication, validates the user ID, and fetches the activities from the database.
+//
+// Parameters:
+//   - c: fiber.Ctx, the context for the current request, which includes request and response objects.
+//
+// Returns:
+//   - fiber.Handler: A function that processes the request and returns an error if any occurs during the retrieval process.
+func (app *Application) GetInvoiceActivitiesHandler() fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		// Check authentication
+		if err := app.contextWithAuth(c, true); err != nil {
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+				"error":   ErrUnauthorized.Error(),
+				"message": "You are not authorized to perform this action",
+			})
+		}
+
+		userID := c.Params("userID")
+		if userID == "" {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error":   "Invalid request parameters",
+				"message": "userID must be provided",
+			})
+		}
+
+		if _, err := primitive.ObjectIDFromHex(userID); err != nil {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error":   "Invalid user ID",
+				"message": "The provided userID is not a valid ObjectID",
+			})
+		}
+
+		// get limit from query params, default to 10 if not provided
+		limit := int64(10)
+		if limitStr := c.Query("limit"); limitStr != "" {
+			parsedLimit, err := strconv.ParseInt(limitStr, 10, 64)
+			if err == nil && parsedLimit > 0 {
+				limit = parsedLimit
+			}
+		}
+
+		activities, err := app.invoiceRepository.GetInvoiceActivities(app.db, userID, limit)
+		if err != nil {
+			slog.Error("Failed to retrieve invoice activities", "error", err)
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error":   "Failed to retrieve invoice activities",
+				"message": err.Error(),
+			})
+		}
+
+		go func() {
+			activity := &domain.Activity{
+				UserID:    userID,
+				Action:    infra.ViewInvoiceActivity,
+				Timestamp: time.Now(),
+				Metadata: map[string]interface{}{
+					"limit":           limit,
+					"activitiesCount": len(activities),
+				},
+			}
+			if err := app.activityRepository.Save(app.db, activity); err != nil {
+				slog.Error("Failed to record user activity", "error", err)
+			}
+		}()
+
+		return c.Status(fiber.StatusOK).JSON(fiber.Map{
+			"message": "Invoice activities retrieved successfully",
+			"data":    activities,
+		})
 	}
 }
