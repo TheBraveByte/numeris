@@ -36,6 +36,9 @@ type InvoiceRequestModel struct {
 	Sender          SenderDetails      `json:"sender" validate:"required"`
 	IssueDate       string             `json:"issue_date" validate:"required"`
 	DueDate         string             `json:"due_date"`
+	Status string `json:"status" validate:"required"`
+
+
 }
 
 type UpdateInvoiceStatusRequestModel struct {

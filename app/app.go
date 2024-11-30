@@ -324,6 +324,7 @@ func (app *Application) CreateInvoiceHandler() fiber.Handler {
 				Address: data.Sender.Address,
 			},
 
+			data.Status,
 		)
 
 		if err != nil {
