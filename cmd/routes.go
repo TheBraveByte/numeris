@@ -52,8 +52,8 @@ func Router(srv *fiber.App, app *app.Application) {
 	// recall am using a wildcard format to allow external origin
 	router.Use(cors.New(ConfigDefault))
 
-	// 
-	router.Get("/", func(c *fiber.Ctx) error{
+	//
+	router.Get("/", func(c *fiber.Ctx) error {
 		return c.SendString("Welcome to the numeris API!")
 	})
 
@@ -64,12 +64,12 @@ func Router(srv *fiber.App, app *app.Application) {
 	// invoices routes
 	router.Post("/api/invoice/:userID/create", app.CreateInvoiceHandler())
 	router.Get("/api/invoice/:userID/get/:invoiceID", app.GetInvoiceHandler())
-	router.Get("/api/invoice/:userID/all/:invoiceID", app.ListAllInvoiceHandler())
+	router.Get("/api/invoice/:userID/all", app.ListAllInvoiceHandler())
 
 	router.Put("/api/invoice/:userID/update/:invoiceID", app.UpdateUnIssuedInvoiceHandler())
 	router.Delete("/api/invoice/:userID/delete/:invoiceID", app.DeleteInvoiceHandler())
 
-	router.Get("/api/invoice/:userID/stats/:invoiceID", app.GetUserInvoiceStatHandler())
+	router.Get("/api/invoice/:userID/stats", app.GetUserInvoiceStatHandler())
 	router.Post("/api/invoice/:userID/send/:invoiceID", app.SendIssuedInvoiceToCustomer())
 	router.Get("/api/invoice/:userID/download/:invoiceID", app.DownloadInvoicePDFHandler())
 
