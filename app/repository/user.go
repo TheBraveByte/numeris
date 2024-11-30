@@ -7,7 +7,7 @@ import (
 )
 
 type UserRepository interface {
-	AddUser(db *mongo.Client, user *domain.User, email string) (interface{}, *domain.User)
+	AddUser(db *mongo.Client, user *domain.User, email string) (*domain.User, error)
 	VerifyLogin(db *mongo.Client, email, password string) (*domain.User, error)
 	SaveToken(db *mongo.Client, id string, accessToken string) error
 	UpdatePassword(db *mongo.Client, email, password string) error

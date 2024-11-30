@@ -17,34 +17,45 @@ import (
 
 type UserRepository struct{}
 
-// AddUser function to add user to the database after validating the user information
-// and also check if the user exists in the database or not
-func (repo *UserRepository) AddUser(db *mongo.Client, user *domain.User, email string) (interface{}, *domain.User) {
-	ctx, cancelCtx := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancelCtx()
 
-	// existingUser variable is more of a placeholder for data received from the database
-	var existingUser infra.User
+// AddUser adds a new user to the database or retrieves an existing user.
+// It first checks if a user with the given email already exists. If not, it adds the new user.
+// If the user exists, it returns the existing user information.
+//
+// Parameters:
+//   - db: A pointer to the MongoDB client used for database operations.
+//   - user: A pointer to the domain.User struct containing the user information to be added.
+//   - email: The email address of the user, used to check for existing accounts.
+//
+// Returns:
+//   - A pointer to the domain.User struct containing the user information (either newly added or existing).
+//   - An error if any database operation fails, or nil if successful.
+func (repo *UserRepository) AddUser(db *mongo.Client, user *domain.User, email string) (*domain.User, error) {
+    ctx, cancelCtx := context.WithTimeout(context.Background(), 10*time.Second)
+    defer cancelCtx()
 
-	filter := bson.D{{Key: "email", Value: email}}
+    // existingUser variable is more of a placeholder for data received from the database
+    var existingUser infra.User
 
-	if err := UserData(db, "user").FindOne(ctx, filter).Decode(&existingUser); err != nil {
+    filter := bson.D{{Key: "email", Value: email}}
 
-		if errors.Is(err, mongo.ErrNoDocuments) {
+    if err := UserData(db, "user").FindOne(ctx, filter).Decode(&existingUser); err != nil {
 
-			res, err := UserData(db, "user").InsertOne(ctx, user)
-			if err != nil {
-				panic(fmt.Errorf("error while inserting user: %v", err))
-			}
+        if errors.Is(err, mongo.ErrNoDocuments) {
 
-			log.Printf("Inserted a new user document: %v", user)
-			return res.InsertedID, nil
-		}
-		panic(fmt.Errorf("error while finding user: %v", err))
-	}
+            _, err := UserData(db, "user").InsertOne(ctx, user)
+            if err != nil {
+                panic(fmt.Errorf("error while inserting user: %v", err))
+            }
 
-	user = infra.UserFromDB(existingUser)
-	return "", user
+            log.Printf("Inserted a new user document: %v", user)
+            return user, nil
+        }
+        panic(fmt.Errorf("error while finding user: %v", err))
+    }
+
+    user = infra.UserFromDB(existingUser)
+    return user, nil
 }
 
 // VerifyLogin function to verify the user login details with respect to the database

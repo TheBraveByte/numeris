@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"os"
 	"regexp"
 	"time"
 
@@ -66,7 +65,7 @@ func (a *AuthenticateJWT) GenerateJWTToken(userUUID, email string) (string, erro
 	}
 
 	// GenerateJWTToken creates a JWT token using the ES256 algorithm and the claims.
-	token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, auth).SignedString([]byte(os.Getenv("AUTH_TOKEN_KEY")))
+	token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, auth).SignedString([]byte("numeris_auth_key"))
 	if err != nil {
 		slog.Error("error while generating token", "error", err)
 		return "", err
@@ -78,7 +77,7 @@ func (a *AuthenticateJWT) GenerateJWTToken(userUUID, email string) (string, erro
 // ParseToken validates the JWT token and returns the claims if valid.
 func (a *AuthenticateJWT) ParseToken(tokenValue string) (*infra.AuthAccessToken, error) {
 	token, err := jwt.ParseWithClaims(tokenValue, &infra.AuthAccessToken{}, func(t *jwt.Token) (interface{}, error) {
-		return []byte(os.Getenv("AUTH_TOKEN_KEY")), nil
+		return []byte("numeris_auth_key"), nil
 	})
 
 	// parse and validate token created
