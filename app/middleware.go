@@ -1,7 +1,7 @@
 package app
 
 import (
-	"log/slog"
+	"fmt"
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
@@ -16,8 +16,8 @@ func (app *Application) contextWithAuth(c *fiber.Ctx, forceAuth bool) error {
 			return c.Status(fiber.StatusNoContent).JSON(fiber.Map{"error": "No token provided"})
 		}
 
-		tokenSlices := strings.Split(authString, " ")
-		slog.Info("Checking token", tokenSlices, len(tokenSlices))
+		tokenSlices := strings.Split(authString, "")
+		// slog.Info("Checking token", tokenSlices, len(tokenSlices))
 		if len(tokenSlices) != 2 || tokenSlices[0] != "Bearer" {
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid authorization header"})
 		}
@@ -36,5 +36,5 @@ func (app *Application) contextWithAuth(c *fiber.Ctx, forceAuth bool) error {
 		return c.Next()
 	}
 
-	return c.Next()
+	return fmt.Errorf("UnAuthorized Access")
 }
